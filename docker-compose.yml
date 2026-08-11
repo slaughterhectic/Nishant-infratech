@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nishant-infratech-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nishant_infratech
+      POSTGRES_USER: nishant
+      POSTGRES_PASSWORD: nishant123
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

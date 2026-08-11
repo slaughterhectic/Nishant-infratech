@@ -1,0 +1,35 @@
+{
+  "name": "nishant-infratech",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cement & Sariya trading management for Nishant Infratech",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "cd client && npx vite --port 5175",
+    "dev:server": "node --env-file=.env node_modules/.bin/tsx watch server/index.ts",
+    "start": "npx tsx server/index.ts",
+    "build": "cd client && npx vite build",
+    "db:init": "node --env-file=.env node_modules/.bin/tsx server/db/init_only.ts"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "tsx": "^4.19.0",
+    "twilio": "^6.0.2",
+    "typescript": "^5.6.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/pg": "^8.20.0",
+    "concurrently": "^9.1.0"
+  }
+}

@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-surface: 250 247 242;      /* warm off-white */
+  --color-card: 255 255 255;
+  --color-card-border: 232 224 213;
+  --color-heading: 26 22 18;
+  color-scheme: light;
+}
+
+.dark {
+  --color-surface: 15 17 26;
+  --color-card: 24 27 41;
+  --color-card-border: 45 50 70;
+  --color-heading: 229 231 235;
+  /* Tells the browser to render native controls (select dropdown popups,
+     scrollbars, date pickers) in dark theme — without this, the popup list
+     for every <select> stays light-background while our text stays light-
+     colored for the dark page, making dropdown options unreadable. */
+  color-scheme: dark;
+}
+
+html, body {
+  background-color: rgb(var(--color-surface));
+  color: rgb(var(--color-heading));
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* Make native date/month picker indicators visible against dark inputs */
+  .dark input[type='date']::-webkit-calendar-picker-indicator,
+  .dark input[type='month']::-webkit-calendar-picker-indicator,
+  .dark input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(0.85);
+  }
+}
+
+@layer components {
+  .input-field {
+    @apply w-full rounded-lg border border-card-border bg-card px-3 py-2 text-sm text-heading shadow-sm transition-all duration-150 placeholder:text-gray-400 hover:border-heading/20 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15 dark:placeholder:text-gray-500;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-500/30 transition-all duration-150 hover:bg-brand-600 hover:shadow-md hover:shadow-brand-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg border border-card-border bg-card px-4 py-2 text-sm font-semibold text-heading shadow-sm transition-all duration-150 hover:border-heading/20 hover:bg-surface active:scale-[0.98];
+  }
+  .card {
+    @apply rounded-xl border border-card-border bg-card p-5 shadow-[0_1px_2px_rgb(0,0,0/0.04),0_1px_1px_rgb(0,0,0/0.03)] transition-shadow duration-200 dark:shadow-[0_1px_2px_rgb(0,0,0/0.2),0_0_0_1px_rgb(255,255,255/0.02)];
+  }
+  .card-interactive {
+    @apply card cursor-pointer hover:-translate-y-0.5 hover:border-brand-300/60 hover:shadow-[0_8px_24px_rgb(0,0,0/0.08)] active:translate-y-0 dark:hover:border-brand-500/40 dark:hover:shadow-[0_8px_24px_rgb(0,0,0/0.35)];
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide;
+  }
+  .pill-dot {
+    @apply h-1.5 w-1.5 shrink-0 rounded-full bg-current;
+  }
+  .table-clean thead th {
+    @apply bg-surface/70 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-heading/45;
+  }
+  .table-clean tbody tr {
+    @apply transition-colors duration-100 hover:bg-brand-500/[0.04];
+  }
+  .table-clean tbody td {
+    @apply px-4 py-3;
+  }
+  .section-label {
+    @apply text-xs font-bold uppercase tracking-wider text-heading/40;
+  }
+  .stat-figure {
+    @apply font-bold tabular-nums tracking-tight text-heading;
+  }
+  .fade-in {
+    animation: fade-in 0.25s ease-out both;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.recharts-responsive-container {
+  width: 100% !important;
+}
+
+::selection {
+  background-color: rgb(var(--color-brand-select, 245 105 31) / 0.25);
+}
+
+/* Slim, unobtrusive scrollbars that still respect the theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-card-border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--color-card-border));
+  border-radius: 8px;
+}
