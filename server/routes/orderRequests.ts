@@ -63,7 +63,11 @@ router.patch('/:id/proceed', async (req, res) => {
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
+// Gatekeepers can punch and view orders but not remove them — that's a
+// structural role restriction, independent of whatever page permissions
+// they've been granted.
 router.patch('/:id/discard', async (req, res) => {
+  if (req.user!.role === 'gatekeeper') return res.status(403).json({ error: 'Gatekeepers cannot discard order requests' });
   try {
     const row = await getOne(`UPDATE order_requests SET status='discarded' WHERE id=$1 AND status='pending' RETURNING *`, [req.params.id]);
     if (!row) return res.status(404).json({ error: 'Order request not found or already settled' });
@@ -72,6 +76,7 @@ router.patch('/:id/discard', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  if (req.user!.role === 'gatekeeper') return res.status(403).json({ error: 'Gatekeepers cannot delete order requests' });
   try {
     await query(`DELETE FROM order_requests WHERE id=$1 AND status='pending'`, [req.params.id]);
     res.json({ success: true });

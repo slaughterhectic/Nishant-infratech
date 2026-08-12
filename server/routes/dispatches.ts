@@ -8,6 +8,18 @@ import { sendTrialVerificationSms } from '../lib/sms';
 
 const router = Router();
 
+// OTP is exclusive to godown_manager (+ owner) per the client's explicit
+// rule — strip it from every dispatch row before it leaves the server,
+// not just at the one screen gated behind the 'otp' permission. A page-level
+// permission only controls which screens a role can open; it doesn't stop
+// otp_code riding along in a 'dispatch'/'gate'-gated list/fulfill response.
+function maskOtp<T extends Record<string, any>>(row: T | null | undefined, req: { user?: { role?: string } }): T | null | undefined {
+  if (!row) return row;
+  if (req.user?.role === 'owner' || req.user?.role === 'godown_manager') return row;
+  const { otp_code, driver_submitted_otp, ...rest } = row;
+  return rest as T;
+}
+
 const LIST_SELECT = `
   SELECT d.*, ('DSP-' || (1000 + d.id)) as dispatch_number,
     p.name as party_name, p.phone as party_phone,
@@ -35,7 +47,7 @@ router.get('/', async (req, res) => {
     if (driver_id) { params.push(driver_id); clauses.push(`d.driver_id=$${params.length}`); }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = await getAll(`${LIST_SELECT} ${where} ORDER BY d.created_at DESC, d.id DESC`, params);
-    res.json(rows);
+    res.json(rows.map((r: any) => maskOtp(r, req)));
   } catch (e: any) { res.status(500).json({ error: friendlyError(e) }); }
 });
 
@@ -43,7 +55,7 @@ router.get('/:id', async (req, res) => {
   try {
     const row = await getOne(`${LIST_SELECT} WHERE d.id=$1`, [req.params.id]);
     if (!row) return res.status(404).json({ error: 'Dispatch not found' });
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(500).json({ error: friendlyError(e) }); }
 });
 
@@ -93,7 +105,7 @@ router.post('/punch', async (req, res) => {
       recipientRole: 'godown_manager',
       message: `New order punched: ${quantity} ${product?.unit || ''} ${product?.name || ''}${party ? ' for ' + party.name : ''} — DSP-${1000 + row.id}. Please load and dispatch.`,
     });
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
@@ -149,7 +161,7 @@ router.post('/:id/fulfill', async (req, res) => {
       recipientRole: 'owner',
       message: `Dispatch DSP-${1000 + row.id} loaded out. OTP: ${otp}${sentVia}`,
     });
-    res.json({ ...row, whatsapp_sent: whatsappSent, sms_sent: smsResult.sent });
+    res.json({ ...maskOtp(row, req), whatsapp_sent: whatsappSent, sms_sent: smsResult.sent });
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
@@ -173,7 +185,7 @@ router.post('/:id/otp/verify', async (req, res) => {
       recipientRole: 'owner',
       message: `OTP verified — DSP-${1000 + row.id} delivery completed.`,
     });
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
@@ -188,17 +200,21 @@ router.patch('/:id/otp/discard-driver-entry', async (req, res) => {
       [req.params.id]
     );
     if (!row) return res.status(404).json({ error: 'Dispatch not found' });
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
+// Gatekeepers can punch, view and load dispatches but not remove them —
+// a structural role restriction, independent of whatever page permissions
+// they've been granted.
 router.patch('/:id/cancel', async (req, res) => {
+  if (req.user!.role === 'gatekeeper') return res.status(403).json({ error: 'Gatekeepers cannot cancel dispatches' });
   try {
     const dispatch = await getOne('SELECT * FROM dispatches WHERE id=$1', [req.params.id]);
     if (!dispatch) return res.status(404).json({ error: 'Dispatch not found' });
     if (dispatch.status === 'delivered') return res.status(400).json({ error: 'Cannot cancel a delivered dispatch' });
     const row = await getOne(`UPDATE dispatches SET status='cancelled' WHERE id=$1 RETURNING *`, [req.params.id]);
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
@@ -215,11 +231,12 @@ router.put('/:id', async (req, res) => {
       [date, product_id, quantity, rate || 0, destination_type, destination_location_id || null, destination_address || null,
        payment_type, credit_days || null, expected_delivery_date || null, remarks || null, req.params.id]
     );
-    res.json(row);
+    res.json(maskOtp(row, req));
   } catch (e: any) { res.status(400).json({ error: friendlyError(e) }); }
 });
 
 router.delete('/:id', async (req, res) => {
+  if (req.user!.role === 'gatekeeper') return res.status(403).json({ error: 'Gatekeepers cannot delete dispatches' });
   try {
     const dispatch = await getOne('SELECT status FROM dispatches WHERE id=$1', [req.params.id]);
     if (dispatch && dispatch.status !== 'punched') {
