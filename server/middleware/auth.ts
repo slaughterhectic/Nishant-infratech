@@ -6,7 +6,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'nishant-infratech-dev-secret';
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: number; username: string; role: string; linkedDriverId?: number | null };
+      user?: { id: number; username: string; role: string; linkedDriverId?: number | null; linkedLocationId?: number | null };
     }
   }
 }
@@ -18,9 +18,12 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   }
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET) as {
-      userId: number; username: string; role: string; linkedDriverId?: number | null;
+      userId: number; username: string; role: string; linkedDriverId?: number | null; linkedLocationId?: number | null;
     };
-    req.user = { id: payload.userId, username: payload.username, role: payload.role, linkedDriverId: payload.linkedDriverId ?? null };
+    req.user = {
+      id: payload.userId, username: payload.username, role: payload.role,
+      linkedDriverId: payload.linkedDriverId ?? null, linkedLocationId: payload.linkedLocationId ?? null,
+    };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

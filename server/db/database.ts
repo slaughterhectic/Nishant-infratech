@@ -256,6 +256,11 @@ export async function initializeDatabase() {
     `);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_driver_id INTEGER REFERENCES drivers(id)`);
 
+    // Gatekeeper/godown_manager accounts can be tied to one specific godown, so
+    // Gate Entry only shows dispatches sourced from that location. Left null,
+    // a user sees every godown's dispatches (e.g. owner/accountant).
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS linked_location_id INTEGER REFERENCES locations(id)`);
+
     // Drivers can ask the owner for a cash advance — surfaced in the notification bell.
     await client.query(`ALTER TABLE dispatch_notifications DROP CONSTRAINT IF EXISTS dispatch_notifications_event_type_check`);
     await client.query(`
