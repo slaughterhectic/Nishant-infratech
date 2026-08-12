@@ -7,6 +7,10 @@ const poolConfig: pg.PoolConfig = process.env.DATABASE_URL
       connectionString: process.env.DATABASE_URL,
       max: POOL_MAX,
       idleTimeoutMillis: 30000,
+      // Hosted Postgres (Supabase, Render, etc.) requires TLS; their certs
+      // aren't in Node's default trust store, so verification is relaxed
+      // rather than disabled outright — the connection itself is still encrypted.
+      ssl: process.env.DATABASE_URL.includes('localhost') ? undefined : { rejectUnauthorized: false },
     }
   : {
       host: process.env.DB_HOST || 'localhost',

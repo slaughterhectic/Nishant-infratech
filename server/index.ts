@@ -26,11 +26,26 @@ import driverPortalRouter from './routes/driverPortal';
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL, 'http://localhost:5175']
-  : ['http://localhost:5175'];
+// FRONTEND_URL may be a comma-separated list (e.g. prod Vercel domain + a
+// custom domain). Vercel preview deploys get a fresh *.vercel.app subdomain
+// per branch/PR, so those are matched by pattern rather than listed individually.
+const allowedOrigins = (process.env.FRONTEND_URL ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .concat('http://localhost:5175');
+const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
 
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 app.use(compression());
 app.use(express.json({ limit: '20mb' }));
 
