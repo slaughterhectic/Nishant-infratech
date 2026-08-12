@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, PackageSearch, Trash2, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
-import { useToastStore } from '../lib/store';
+import { useToastStore, useAuthStore } from '../lib/store';
 import { formatDate, formatDateInput, formatINR, formatNumber } from '../lib/format';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Modal } from '../components/ui/Modal';
+import { PartySelect } from '../components/PartySelect';
 
 const REQUEST_STATUS_STYLE: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -35,6 +36,7 @@ const emptyForm = {
 export default function Orders() {
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
+  const canRemove = useAuthStore((s) => s.user?.role !== 'gatekeeper');
   const [rows, setRows] = useState<any[]>([]);
   const [parties, setParties] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -132,21 +134,16 @@ export default function Orders() {
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-heading">New Order Request</h2>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-heading/70">Customer</label>
-            <select
-              className="input-field"
-              value={form.party_id}
-              onChange={(e) => {
-                const party_id = e.target.value;
-                const party = parties.find((p) => String(p.id) === party_id);
-                setForm({ ...form, party_id, destination_address: party?.address || '' });
-              }}
-            >
-              <option value="">Select…</option>
-              {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+          <PartySelect
+            label="Customer"
+            required
+            partyType="customer"
+            value={form.party_id ? Number(form.party_id) : undefined}
+            onChange={(party_id) => {
+              const party = parties.find((p) => p.id === party_id);
+              setForm({ ...form, party_id: String(party_id), destination_address: party?.address || form.destination_address });
+            }}
+          />
           <div>
             <label className="mb-1 block text-sm font-medium text-heading/70">Product</label>
             <select className="input-field" value={form.product_id} onChange={(e) => setForm({ ...form, product_id: e.target.value })}>
@@ -325,9 +322,11 @@ export default function Orders() {
 
             {selected.status === 'pending' && (
               <div className="flex gap-3">
-                <button className="btn-secondary flex-1 justify-center !border-red-300 !text-red-600 dark:!text-red-400" onClick={() => discard(selected.id)}>
-                  <Trash2 className="h-4 w-4" /> Discard
-                </button>
+                {canRemove && (
+                  <button className="btn-secondary flex-1 justify-center !border-red-300 !text-red-600 dark:!text-red-400" onClick={() => discard(selected.id)}>
+                    <Trash2 className="h-4 w-4" /> Discard
+                  </button>
+                )}
                 <button className="btn-primary flex-1 justify-center" onClick={() => proceedToSale(selected)}>
                   Proceed to Sale →
                 </button>

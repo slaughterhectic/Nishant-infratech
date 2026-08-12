@@ -30,12 +30,15 @@ const PERMISSIONS: { key: string; label: string; hint: string }[] = [
   { key: 'reports', label: 'Reports', hint: 'P&L, sales, outstanding' },
 ];
 
-const emptyForm = { username: '', password: '', display_name: '', role: 'accountant', driver_id: '' };
+const GODOWN_SCOPED_ROLES = ['gatekeeper', 'godown_manager'];
+
+const emptyForm = { username: '', password: '', display_name: '', role: 'accountant', driver_id: '', location_id: '' };
 
 export default function UserManagement() {
   const addToast = useToastStore((s) => s.addToast);
   const [rows, setRows] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -52,7 +55,13 @@ export default function UserManagement() {
     finally { setLoading(false); }
   }, [addToast]);
 
-  useEffect(() => { load(); api.drivers.list().then(setDrivers).catch(() => {}); }, [load]);
+  useEffect(() => {
+    load();
+    api.drivers.list().then(setDrivers).catch(() => {});
+    api.locations.list().then(setLocations).catch(() => {});
+  }, [load]);
+
+  const godownLocations = locations.filter((l) => l.type !== 'rail_platform');
 
   const save = async () => {
     if (!form.username.trim() || !form.password || !form.display_name.trim()) {
@@ -60,7 +69,11 @@ export default function UserManagement() {
     }
     setSaving(true);
     try {
-      await api.auth.createUser({ ...form, driver_id: form.driver_id ? Number(form.driver_id) : undefined });
+      await api.auth.createUser({
+        ...form,
+        driver_id: form.driver_id ? Number(form.driver_id) : undefined,
+        location_id: form.location_id ? Number(form.location_id) : undefined,
+      });
       addToast('User created');
       setOpen(false);
       setForm(emptyForm);
@@ -131,7 +144,14 @@ export default function UserManagement() {
                     ) : u.role === 'driver' ? (
                       <span className="inline-flex items-center gap-1 text-heading/50"><Notebook className="h-3.5 w-3.5" /> {u.driver_name ? `Own ledger — ${u.driver_name}` : 'Not linked to a driver'}</span>
                     ) : (
-                      `${(u.permissions || []).length} of ${PERMISSIONS.length} pages`
+                      <>
+                        {`${(u.permissions || []).length} of ${PERMISSIONS.length} pages`}
+                        {GODOWN_SCOPED_ROLES.includes(u.role) && (
+                          <span className="block text-xs text-heading/40">
+                            {u.location_name ? u.location_name : 'Not linked to a godown (sees all)'}
+                          </span>
+                        )}
+                      </>
                     )}
                   </td>
                   <td>
@@ -194,6 +214,16 @@ export default function UserManagement() {
                 {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}{d.phone ? ` — ${d.phone}` : ''}</option>)}
               </select>
               <p className="mt-1 text-xs text-heading/40">Their trip entries in Vehicle Ledger / Masters will be tied to this driver.</p>
+            </div>
+          )}
+          {GODOWN_SCOPED_ROLES.includes(form.role) && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-heading/70">Linked godown</label>
+              <select className="input-field" value={form.location_id} onChange={(e) => setForm({ ...form, location_id: e.target.value })}>
+                <option value="">Not linked — sees every godown</option>
+                {godownLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-heading/40">Gate Entry will only show dispatches sourced from this godown. Leave unset to see all of them.</p>
             </div>
           )}
           <button className="btn-primary w-full justify-center" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>

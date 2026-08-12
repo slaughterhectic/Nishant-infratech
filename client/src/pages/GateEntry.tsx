@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PackageOpen } from 'lucide-react';
 import { api } from '../lib/api';
-import { useToastStore } from '../lib/store';
+import { useToastStore, useAuthStore } from '../lib/store';
 import { formatNumber } from '../lib/format';
+import { VehicleSelect } from '../components/VehicleSelect';
+import { DriverSelect } from '../components/DriverSelect';
 
 // Deliberately minimal — the client's team explained gate/godown staff aren't
 // comfortable with software, so this screen is just cards + a short form.
 // OTP generation and confirmation live on their own dedicated page (/otp).
 export default function GateEntry() {
   const navigate = useNavigate();
+  const location = useLocation();
   const addToast = useToastStore((s) => s.addToast);
-  const [punched, setPunched] = useState<any[]>([]);
+  const linkedLocationId = useAuthStore((s) => s.user?.linked_location_id);
+  const canSeeOtp = useAuthStore((s) => s.user?.role === 'owner' || s.user?.role === 'godown_manager');
+  const [allPunched, setAllPunched] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -24,7 +29,7 @@ export default function GateEntry() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setPunched(await api.dispatches.list({ status: 'punched' })); }
+    try { setAllPunched(await api.dispatches.list({ status: 'punched' })); }
     catch (e: any) { addToast(e.message, 'error'); }
     finally { setLoading(false); }
   }, [addToast]);
@@ -47,12 +52,34 @@ export default function GateEntry() {
         .filter((l) => l.qty > 0)
     : [];
 
+  // Gatekeeper/godown_manager accounts tied to one godown only see that
+  // godown's punched dispatches — everyone else (owner/accountant/unlinked) sees all.
+  const punched = useMemo(() => {
+    if (!linkedLocationId) return allPunched;
+    return allPunched.filter((d) => Number(d.source_location_id) === linkedLocationId);
+  }, [allPunched, linkedLocationId]);
+
   useEffect(() => { load(); loadMeta(); }, [load, loadMeta]);
 
   const openFulfill = (d: any) => {
     setFulfillTarget(d);
     setFulfillForm({ source_location_id: String(d.source_location_id || ''), vehicle_id: '', driver_id: '', driver_mobile: '' });
   };
+
+  // Deep-linked from Sales & Dispatch's "Gate Entry" button on a specific
+  // dispatch row — jump straight to its Load & Dispatch action instead of
+  // making the user find it again in the list below.
+  const openedDispatchIdRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const wantedId = (location.state as any)?.openDispatchId;
+    if (!wantedId || openedDispatchIdRef.current === wantedId) return;
+    const match = punched.find((d) => d.id === wantedId);
+    if (match) {
+      openedDispatchIdRef.current = wantedId;
+      openFulfill(match);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, punched]);
 
   const submitFulfill = async () => {
     if (!fulfillTarget || !fulfillForm.source_location_id) return addToast('Select a location', 'error');
@@ -64,23 +91,30 @@ export default function GateEntry() {
         driver_mobile: fulfillForm.driver_mobile || driver?.phone || undefined,
       });
       setFulfillTarget(null);
-      const vehicle = vehicles.find((v) => String(v.id) === fulfillForm.vehicle_id);
-      navigate('/otp', {
-        state: {
-          justGenerated: {
-            dispatch_number: `DSP-${1000 + row.id}`,
-            otp_code: row.otp_code,
-            whatsapp_sent: row.whatsapp_sent,
-            sms_sent: row.sms_sent,
-            party_name: fulfillTarget.party_name,
-            party_phone: fulfillTarget.party_phone,
-            quantity: fulfillTarget.quantity,
-            product_unit: fulfillTarget.product_unit,
-            product_name: fulfillTarget.product_name,
-            vehicle_number: vehicle?.vehicle_number,
+      // otp_code is stripped server-side for anyone but owner/godown_manager —
+      // OTP is exclusive to them, so don't reference it here, and don't send
+      // a gatekeeper to /otp, which would just bounce them straight back.
+      if (canSeeOtp) {
+        const vehicle = vehicles.find((v) => String(v.id) === fulfillForm.vehicle_id);
+        navigate('/otp', {
+          state: {
+            justGenerated: {
+              dispatch_number: `DSP-${1000 + row.id}`,
+              otp_code: row.otp_code,
+              whatsapp_sent: row.whatsapp_sent,
+              sms_sent: row.sms_sent,
+              party_name: fulfillTarget.party_name,
+              party_phone: fulfillTarget.party_phone,
+              quantity: fulfillTarget.quantity,
+              product_unit: fulfillTarget.product_unit,
+              product_name: fulfillTarget.product_name,
+              vehicle_number: vehicle?.vehicle_number,
+            },
           },
-        },
-      });
+        });
+      } else {
+        addToast('Loaded! OTP sent to customer.', 'success');
+      }
     } catch (e: any) { addToast(e.message, 'error'); }
     finally { setSaving(false); }
   };
@@ -130,20 +164,16 @@ export default function GateEntry() {
                   <p className="mt-1 text-sm text-outstanding">No location has this product in stock right now</p>
                 )}
               </div>
-              <div>
-                <label className="mb-1 block text-base font-medium text-heading/70">Vehicle</label>
-                <select className="input-field !py-3 !text-base" value={fulfillForm.vehicle_id} onChange={(e) => setFulfillForm({ ...fulfillForm, vehicle_id: e.target.value })}>
-                  <option value="">Select…</option>
-                  {vehicles.map((v) => <option key={v.id} value={v.id}>{v.vehicle_number}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-base font-medium text-heading/70">Driver</label>
-                <select className="input-field !py-3 !text-base" value={fulfillForm.driver_id} onChange={(e) => setFulfillForm({ ...fulfillForm, driver_id: e.target.value })}>
-                  <option value="">Select…</option>
-                  {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
+              <VehicleSelect
+                label="Vehicle"
+                value={fulfillForm.vehicle_id ? Number(fulfillForm.vehicle_id) : undefined}
+                onChange={(vehicle_id) => setFulfillForm({ ...fulfillForm, vehicle_id: String(vehicle_id) })}
+              />
+              <DriverSelect
+                label="Driver"
+                value={fulfillForm.driver_id ? Number(fulfillForm.driver_id) : undefined}
+                onChange={(driver_id) => setFulfillForm({ ...fulfillForm, driver_id: String(driver_id) })}
+              />
               <div className="flex gap-3">
                 <button className="btn-secondary flex-1 justify-center !py-3 !text-base" onClick={() => setFulfillTarget(null)}>Cancel</button>
                 <button className="btn-primary flex-1 justify-center !py-3 !text-base" onClick={submitFulfill} disabled={saving}>

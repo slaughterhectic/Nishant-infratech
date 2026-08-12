@@ -6,6 +6,8 @@ import { useToastStore } from '../lib/store';
 import { formatDate, formatDateInput, formatINR, formatNumber } from '../lib/format';
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
+import { VehicleSelect } from '../components/VehicleSelect';
+import { DriverSelect } from '../components/DriverSelect';
 
 interface ExpenseRow { description: string; amount: string }
 interface UnloadingRow { location_name: string; quantity: string; dispatch_id?: string; product_id?: number }
@@ -30,7 +32,6 @@ function SectionHeading({ n, label }: { n: number; label: string }) {
 export default function VehicleLedger() {
   const addToast = useToastStore((s) => s.addToast);
   const [rows, setRows] = useState<any[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -51,8 +52,7 @@ export default function VehicleLedger() {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [v, d] = await Promise.all([api.vehicles.list(), api.drivers.list()]);
-      setVehicles(v);
+      const d = await api.drivers.list();
       setDrivers(d);
     } catch (e: any) { addToast(e.message, 'error'); }
   }, [addToast]);
@@ -223,20 +223,17 @@ export default function VehicleLedger() {
                 <label className="mb-1 block text-sm font-medium text-heading/70">Date</label>
                 <input type="date" className="input-field" value={trip.date} onChange={(e) => setTrip({ ...trip, date: e.target.value })} />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-heading/70">Driver</label>
-                <select className="input-field" value={trip.driver_id} onChange={(e) => setTrip({ ...trip, driver_id: e.target.value })}>
-                  <option value="">Select…</option>
-                  {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-heading/70">Vehicle</label>
-                <select className="input-field" value={trip.vehicle_id} onChange={(e) => setTrip({ ...trip, vehicle_id: e.target.value })}>
-                  <option value="">Select…</option>
-                  {vehicles.map((v) => <option key={v.id} value={v.id}>{v.vehicle_number}</option>)}
-                </select>
-              </div>
+              <DriverSelect
+                label="Driver"
+                value={trip.driver_id ? Number(trip.driver_id) : undefined}
+                onChange={(driver_id) => setTrip({ ...trip, driver_id: String(driver_id) })}
+              />
+              <VehicleSelect
+                label="Vehicle"
+                required
+                value={trip.vehicle_id ? Number(trip.vehicle_id) : undefined}
+                onChange={(vehicle_id) => setTrip({ ...trip, vehicle_id: String(vehicle_id) })}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-heading/70">Advance Amount (₹)</label>
                 <input type="number" className="input-field" value={trip.advance_amount} onChange={(e) => setTrip({ ...trip, advance_amount: e.target.value })} />

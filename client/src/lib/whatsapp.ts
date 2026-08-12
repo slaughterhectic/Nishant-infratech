@@ -11,6 +11,15 @@ export function waLink(phone: string | null | undefined, message: string): strin
   return `https://wa.me/${withCountryCode}?text=${encodeURIComponent(message)}`;
 }
 
+// Same idea as waLink but for a plain SMS compose link — useful when the
+// customer/driver isn't reachable on WhatsApp, or delivery there failed.
+export function smsLink(phone: string | null | undefined, message: string): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return `sms:${phone}?body=${encodeURIComponent(message)}`;
+}
+
 export function dispatchOtpMessage(opts: {
   dispatchNumber: string; partyName?: string; quantity: number; unit: string; productName: string;
   vehicleNumber?: string; otpCode: string;

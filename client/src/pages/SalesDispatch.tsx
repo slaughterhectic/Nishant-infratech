@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, XCircle, PackageSearch, Layers } from 'lucide-react';
+import { Plus, XCircle, PackageSearch, Layers, LogIn } from 'lucide-react';
 import { api } from '../lib/api';
-import { useToastStore } from '../lib/store';
+import { useToastStore, useAuthStore } from '../lib/store';
 import { formatDate, formatDateInput, formatINR, formatNumber } from '../lib/format';
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
+import { PartySelect } from '../components/PartySelect';
 
 const STATUS_STYLE: Record<string, string> = {
   punched: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -41,6 +42,7 @@ const emptyForm = {
 
 export default function SalesDispatch() {
   const addToast = useToastStore((s) => s.addToast);
+  const canRemove = useAuthStore((s) => s.user?.role !== 'gatekeeper');
   const location = useLocation();
   const navigate = useNavigate();
   const [rows, setRows] = useState<any[]>([]);
@@ -118,8 +120,18 @@ export default function SalesDispatch() {
   };
 
   const punch = async () => {
-    if (!form.product_id || !form.quantity || (form.kind === 'sale' && (!form.party_id || !form.rate))) {
-      return addToast('Product, quantity, party and rate (for a sale) are required', 'error');
+    if (!form.source_location_id || !form.product_id || !form.quantity || !form.destination_type) {
+      return addToast('Source location, product, quantity and destination are required', 'error');
+    }
+    if ((form.destination_type === 'own_godown' || form.destination_type === 'rented_godown') && !form.destination_location_id) {
+      return addToast('Select a destination location', 'error');
+    }
+    if (form.kind === 'sale' && (!form.party_id || !form.rate)) {
+      return addToast('Party and rate are required for a sale', 'error');
+    }
+    const available = stockFor(Number(form.product_id));
+    if (Number(form.quantity) > available) {
+      return addToast(`Only ${formatNumber(available)} available at this location — reduce the quantity or pick a different location`, 'error');
     }
     setSaving(true);
     try {
@@ -193,8 +205,16 @@ export default function SalesDispatch() {
               </div>
               <div className="min-w-[120px] text-sm text-heading/60">{d.vehicle_number || '—'}</div>
               <span className={`pill ${STATUS_STYLE[d.status]}`}><span className="pill-dot" />{STATUS_LABEL[d.status]}</span>
-              <div className="flex gap-2">
-                {(d.status === 'punched' || d.status === 'dispatched') && (
+              <div className="flex items-center gap-3">
+                {d.status === 'punched' && (
+                  <button
+                    className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                    onClick={() => navigate('/gate', { state: { openDispatchId: d.id } })}
+                  >
+                    <LogIn className="h-3.5 w-3.5" /> Gate Entry
+                  </button>
+                )}
+                {canRemove && (d.status === 'punched' || d.status === 'dispatched') && (
                   <button className="text-heading/30 transition-colors hover:text-red-600" onClick={() => cancel(d.id)} title="Cancel">
                     <XCircle className="h-5 w-5" />
                   </button>
@@ -244,30 +264,30 @@ export default function SalesDispatch() {
           </div>
 
           {form.kind === 'sale' && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Party</label>
-              <select className="input-field" value={form.party_id} onChange={(e) => setForm({ ...form, party_id: e.target.value })}>
-                <option value="">Select…</option>
-                {parties.map((p) => <option key={p.id} value={p.id}>{p.name}{p.phone ? ` — ${p.phone}` : ''}</option>)}
-              </select>
-            </div>
+            <PartySelect
+              label="Party"
+              required
+              partyType="customer"
+              value={form.party_id ? Number(form.party_id) : undefined}
+              onChange={(party_id) => setForm({ ...form, party_id: String(party_id) })}
+            />
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Source location</label>
+              <label className="mb-1 block text-sm font-medium text-heading/70">Source location<span className="text-outstanding"> *</span></label>
               <select
                 className="input-field"
                 value={form.source_location_id}
                 onChange={(e) => setForm({ ...form, source_location_id: e.target.value, source_purchase_id: '' })}
               >
-                <option value="">Let godown decide</option>
+                <option value="">Select…</option>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-heading/70">
-                Product {form.source_location_id ? '' : '(in stock anywhere)'}
+                Product<span className="text-outstanding"> *</span> {form.source_location_id ? '' : '(in stock anywhere)'}
               </label>
               <select
                 className="input-field"
@@ -339,7 +359,7 @@ export default function SalesDispatch() {
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-heading/70">Destination</label>
+            <label className="mb-1 block text-sm font-medium text-heading/70">Destination<span className="text-outstanding"> *</span></label>
             <select className="input-field" value={form.destination_type} onChange={(e) => setForm({ ...form, destination_type: e.target.value })}>
               {form.kind === 'sale' ? (
                 <>
@@ -357,7 +377,7 @@ export default function SalesDispatch() {
 
           {(form.destination_type === 'own_godown' || form.destination_type === 'rented_godown') ? (
             <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Destination location</label>
+              <label className="mb-1 block text-sm font-medium text-heading/70">Destination location<span className="text-outstanding"> *</span></label>
               <select className="input-field" value={form.destination_location_id} onChange={(e) => setForm({ ...form, destination_location_id: e.target.value })}>
                 <option value="">Select…</option>
                 {locations

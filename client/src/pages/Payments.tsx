@@ -1,35 +1,126 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToastStore } from '../lib/store';
 import { formatDate, formatDateInput, formatINR } from '../lib/format';
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
+import { PartySelect } from '../components/PartySelect';
 
 const emptyForm = { date: formatDateInput(), party_id: '', amount: '', mode: 'bank', direction: 'receive', bank_name: '', remarks: '' };
 
+// Every money-affecting event, not just explicit payment records — a purchase
+// increases what we owe a supplier, a sale increases what a customer owes us,
+// exactly like the running balance on a party's own Ledger. Mirrors the
+// mobile app's combined feed.
+type TxnKind = 'purchase' | 'sale' | 'payment_receive' | 'payment_pay';
+
+interface Txn {
+  key: string;
+  kind: TxnKind;
+  date: string;
+  partyName: string;
+  amount: number;
+  detail?: string;
+  paymentId?: number;
+}
+
+const KIND_LABEL: Record<TxnKind, string> = {
+  purchase: 'Purchase',
+  sale: 'Sale',
+  payment_receive: 'Received',
+  payment_pay: 'Paid',
+};
+
+const KIND_STYLE: Record<TxnKind, string> = {
+  purchase: 'bg-purchase/10 text-purchase',
+  sale: 'bg-sale/10 text-sale',
+  payment_receive: 'bg-profit/10 text-profit',
+  payment_pay: 'bg-outstanding/10 text-outstanding',
+};
+
+const KIND_AMOUNT_CLASS: Record<TxnKind, string> = {
+  purchase: 'text-heading',
+  sale: 'text-heading',
+  payment_receive: 'text-profit',
+  payment_pay: 'text-outstanding',
+};
+
+const FILTERS: { key: 'all' | TxnKind; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'sale', label: 'Sales' },
+  { key: 'purchase', label: 'Purchases' },
+  { key: 'payment_receive', label: 'Received' },
+  { key: 'payment_pay', label: 'Paid' },
+];
+
 export default function Payments() {
   const addToast = useToastStore((s) => s.addToast);
-  const [rows, setRows] = useState<any[]>([]);
-  const [parties, setParties] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [dispatches, setDispatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<'all' | TxnKind>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setRows(await api.payments.list()); }
-    catch (e: any) { addToast(e.message, 'error'); }
+    try {
+      const [pm, pu, ds] = await Promise.all([
+        api.payments.list(),
+        api.purchases.list(),
+        api.dispatches.list({ kind: 'sale' }),
+      ]);
+      setPayments(pm);
+      setPurchases(pu);
+      setDispatches(ds);
+    } catch (e: any) { addToast(e.message, 'error'); }
     finally { setLoading(false); }
   }, [addToast]);
 
-  const loadMeta = useCallback(async () => {
-    try { setParties(await api.parties.list()); }
-    catch (e: any) { addToast(e.message, 'error'); }
-  }, [addToast]);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { load(); loadMeta(); }, [load, loadMeta]);
+  const transactions = useMemo<Txn[]>(() => {
+    const rows: Txn[] = [];
+    for (const p of purchases) {
+      rows.push({
+        key: `purchase-${p.id}`,
+        kind: 'purchase',
+        date: p.date,
+        partyName: p.supplier_name || 'No supplier set',
+        amount: Number(p.purchase_amount),
+        detail: `${p.product_name ?? ''}${p.location_name ? ` · ${p.location_name}` : ''}`,
+      });
+    }
+    for (const d of dispatches) {
+      if (d.status === 'cancelled' || !d.party_id) continue;
+      rows.push({
+        key: `dispatch-${d.id}`,
+        kind: 'sale',
+        date: d.date,
+        partyName: d.party_name || 'Unknown party',
+        amount: Number(d.total_amount),
+        detail: d.product_name ?? '',
+      });
+    }
+    for (const pm of payments) {
+      rows.push({
+        key: `payment-${pm.id}`,
+        kind: pm.direction === 'receive' ? 'payment_receive' : 'payment_pay',
+        date: pm.date,
+        partyName: pm.party_name,
+        amount: Number(pm.amount),
+        detail: pm.mode === 'bank' && pm.bank_name ? pm.bank_name : pm.mode,
+        paymentId: pm.id,
+      });
+    }
+    rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.key.localeCompare(a.key)));
+    return rows;
+  }, [purchases, dispatches, payments]);
+
+  const filteredTransactions = filter === 'all' ? transactions : transactions.filter((t) => t.kind === filter);
 
   const save = async () => {
     if (!form.party_id || !form.amount) return addToast('Party and amount are required', 'error');
@@ -55,9 +146,23 @@ export default function Payments() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-heading">Payments &amp; Collections</h1>
-          <p className="text-sm text-heading/50">Recording a payment logs an activity notification</p>
+          <p className="text-sm text-heading/50">Every purchase, sale and payment, in one combined feed</p>
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Record Payment</button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              filter === f.key ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/30' : 'border border-card-border bg-card text-heading/60 hover:bg-surface'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {loading ? <Skeleton.Table columns={6} /> : (
@@ -68,27 +173,29 @@ export default function Payments() {
               <tr>
                 <th>Date</th>
                 <th>Party</th>
-                <th>Direction</th>
-                <th>Amount</th>
-                <th>Mode</th>
+                <th>Type</th>
+                <th>Detail</th>
+                <th className="text-right">Amount</th>
                 <th></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-card-border">
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-4 py-2.5">{formatDate(r.date)}</td>
-                  <td className="px-4 py-2.5 font-medium text-heading">{r.party_name}</td>
-                  <td className="px-4 py-2.5 capitalize">{r.direction === 'receive' ? 'Received' : 'Paid'}</td>
-                  <td className="px-4 py-2.5">{formatINR(r.amount)}</td>
-                  <td className="px-4 py-2.5 capitalize">{r.mode}{r.bank_name ? ` · ${r.bank_name}` : ''}</td>
+              {filteredTransactions.map((t) => (
+                <tr key={t.key}>
+                  <td className="px-4 py-2.5">{formatDate(t.date)}</td>
+                  <td className="px-4 py-2.5 font-medium text-heading">{t.partyName}</td>
+                  <td className="px-4 py-2.5"><span className={`pill ${KIND_STYLE[t.kind]}`}>{KIND_LABEL[t.kind]}</span></td>
+                  <td className="px-4 py-2.5 text-heading/60">{t.detail || '—'}</td>
+                  <td className={`px-4 py-2.5 text-right font-semibold ${KIND_AMOUNT_CLASS[t.kind]}`}>{formatINR(t.amount)}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => remove(r.id)} className="text-heading/40 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                    {t.paymentId ? (
+                      <button onClick={() => remove(t.paymentId!)} className="text-heading/40 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-heading/40">No payments yet</td></tr>
+              {filteredTransactions.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-heading/40">Nothing here yet</td></tr>
               )}
             </tbody>
           </table>
@@ -98,17 +205,17 @@ export default function Payments() {
 
       <Modal isOpen={open} onClose={() => setOpen(false)} title="Record Payment">
         <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-heading/70">Party</label>
-            <select className="input-field" value={form.party_id} onChange={(e) => setForm({ ...form, party_id: e.target.value })}>
-              <option value="">Select…</option>
-              {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+          <PartySelect
+            label="Party"
+            required
+            partyType={form.direction === 'receive' ? 'customer' : 'supplier'}
+            value={form.party_id ? Number(form.party_id) : undefined}
+            onChange={(party_id) => setForm({ ...form, party_id: String(party_id) })}
+          />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-heading/70">Direction</label>
-              <select className="input-field" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })}>
+              <select className="input-field" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value, party_id: '' })}>
                 <option value="receive">Receive</option>
                 <option value="pay">Pay</option>
               </select>

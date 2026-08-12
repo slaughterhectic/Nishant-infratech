@@ -2,14 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Check, CheckCircle2, KeyRound, MessageCircle, Smartphone, Truck, X } from 'lucide-react';
 import { api } from '../lib/api';
-import { useToastStore } from '../lib/store';
+import { useToastStore, useAuthStore } from '../lib/store';
 import { formatNumber, formatRelativeTime } from '../lib/format';
-import { waLink, dispatchOtpMessage } from '../lib/whatsapp';
+import { waLink, smsLink, dispatchOtpMessage } from '../lib/whatsapp';
 import { Skeleton } from '../components/ui/Skeleton';
 
 export default function OtpConfirmations() {
   const location = useLocation();
   const addToast = useToastStore((s) => s.addToast);
+  const isOwner = useAuthStore((s) => s.user?.role === 'owner');
   const [pending, setPending] = useState<any[]>([]);
   const [recent, setRecent] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +85,11 @@ export default function OtpConfirmations() {
         <div className="fade-in rounded-2xl border border-brand-300/50 bg-brand-500/[0.06] p-6 text-center dark:border-brand-500/30">
           <p className="section-label mb-1">{justGenerated.dispatch_number} loaded &amp; on its way</p>
           <p className="mb-3 text-sm text-heading/60">Share this OTP with the customer/driver — they'll read it back once material is received</p>
-          <p className="text-5xl font-black tracking-[0.25em] text-brand-600">{justGenerated.otp_code}</p>
+          {isOwner ? (
+            <p className="text-5xl font-black tracking-[0.25em] text-brand-600">{justGenerated.otp_code}</p>
+          ) : (
+            <p className="text-sm text-heading/40">OTP sent — only the owner can view the code here</p>
+          )}
           {justGenerated.whatsapp_sent && (
             <p className="mt-3 flex items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
               <MessageCircle className="h-4 w-4" /> Sent automatically via WhatsApp
@@ -97,29 +102,34 @@ export default function OtpConfirmations() {
           )}
           {!justGenerated.whatsapp_sent && !justGenerated.sms_sent && (
             <p className="mt-3 text-sm font-medium text-amber-600 dark:text-amber-400">
-              Not sent automatically — read it out or tap below to share on WhatsApp
+              Not sent automatically — read it out or tap below to share via WhatsApp or SMS
             </p>
           )}
-          <div className="mt-4 flex justify-center gap-3">
-            {!justGenerated.whatsapp_sent && !justGenerated.sms_sent && waLink(justGenerated.party_phone, dispatchOtpMessage({
+          {(() => {
+            const otpMsg = dispatchOtpMessage({
               dispatchNumber: justGenerated.dispatch_number, partyName: justGenerated.party_name,
               quantity: justGenerated.quantity, unit: justGenerated.product_unit, productName: justGenerated.product_name,
               vehicleNumber: justGenerated.vehicle_number, otpCode: justGenerated.otp_code,
-            })) && (
-              <a
-                className="btn-primary !bg-emerald-600 hover:!bg-emerald-700 !shadow-emerald-600/30"
-                href={waLink(justGenerated.party_phone, dispatchOtpMessage({
-                  dispatchNumber: justGenerated.dispatch_number, partyName: justGenerated.party_name,
-                  quantity: justGenerated.quantity, unit: justGenerated.product_unit, productName: justGenerated.product_name,
-                  vehicleNumber: justGenerated.vehicle_number, otpCode: justGenerated.otp_code,
-                }))!}
-                target="_blank" rel="noreferrer"
-              >
-                <MessageCircle className="h-4 w-4" /> Send via WhatsApp
-              </a>
-            )}
-            <button className="btn-secondary" onClick={() => setJustGenerated(null)}>Got it</button>
-          </div>
+            });
+            const waHref = waLink(justGenerated.party_phone, otpMsg);
+            const smsHref = smsLink(justGenerated.party_phone, otpMsg);
+            const showManualSend = !justGenerated.whatsapp_sent && !justGenerated.sms_sent;
+            return (
+              <div className="mt-4 flex justify-center gap-3">
+                {showManualSend && waHref && (
+                  <a className="btn-primary !bg-emerald-600 hover:!bg-emerald-700 !shadow-emerald-600/30" href={waHref} target="_blank" rel="noreferrer">
+                    <MessageCircle className="h-4 w-4" /> Send via WhatsApp
+                  </a>
+                )}
+                {showManualSend && smsHref && (
+                  <a className="btn-secondary" href={smsHref}>
+                    <Smartphone className="h-4 w-4" /> Send via SMS
+                  </a>
+                )}
+                <button className="btn-secondary" onClick={() => setJustGenerated(null)}>Got it</button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -142,6 +152,13 @@ export default function OtpConfirmations() {
                 <div className="flex items-center gap-1.5 text-sm text-heading/50">
                   <Truck className="h-3.5 w-3.5" /> {d.vehicle_number || '—'}
                 </div>
+
+                {isOwner && d.otp_code && (
+                  <div className="flex items-center justify-between rounded-lg bg-brand-500/10 px-3 py-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-brand-600">OTP</span>
+                    <span className="text-xl font-bold tracking-[0.3em] text-heading">{d.otp_code}</span>
+                  </div>
+                )}
 
                 {d.driver_submitted_otp && (() => {
                   const matches = String(d.driver_submitted_otp) === String(d.otp_code);
@@ -172,21 +189,28 @@ export default function OtpConfirmations() {
                 })()}
 
                 <div className="flex gap-2">
-                  {waLink(d.party_phone, dispatchOtpMessage({
-                    dispatchNumber: d.dispatch_number, partyName: d.party_name, quantity: d.quantity,
-                    unit: d.product_unit, productName: d.product_name, vehicleNumber: d.vehicle_number, otpCode: d.otp_code,
-                  })) && (
-                    <a
-                      className="btn-secondary !px-3"
-                      href={waLink(d.party_phone, dispatchOtpMessage({
-                        dispatchNumber: d.dispatch_number, partyName: d.party_name, quantity: d.quantity,
-                        unit: d.product_unit, productName: d.product_name, vehicleNumber: d.vehicle_number, otpCode: d.otp_code,
-                      }))!}
-                      target="_blank" rel="noreferrer" title="Send OTP via WhatsApp"
-                    >
-                      <MessageCircle className="h-4 w-4 text-emerald-600" />
-                    </a>
-                  )}
+                  {(() => {
+                    const otpMsg = dispatchOtpMessage({
+                      dispatchNumber: d.dispatch_number, partyName: d.party_name, quantity: d.quantity,
+                      unit: d.product_unit, productName: d.product_name, vehicleNumber: d.vehicle_number, otpCode: d.otp_code,
+                    });
+                    const waHref = waLink(d.party_phone, otpMsg);
+                    const smsHref = smsLink(d.party_phone, otpMsg);
+                    return (
+                      <>
+                        {waHref && (
+                          <a className="btn-secondary !px-3" href={waHref} target="_blank" rel="noreferrer" title="Send OTP via WhatsApp">
+                            <MessageCircle className="h-4 w-4 text-emerald-600" />
+                          </a>
+                        )}
+                        {smsHref && (
+                          <a className="btn-secondary !px-3" href={smsHref} title="Send OTP via SMS">
+                            <Smartphone className="h-4 w-4 text-blue-600" />
+                          </a>
+                        )}
+                      </>
+                    );
+                  })()}
                   <button className={`${d.driver_submitted_otp ? 'btn-secondary' : 'btn-primary'} flex-1 justify-center`} onClick={() => openVerify(d.id)}>
                     <KeyRound className="h-4 w-4" /> {d.driver_submitted_otp ? 'Enter OTP manually' : 'Enter OTP'}
                   </button>

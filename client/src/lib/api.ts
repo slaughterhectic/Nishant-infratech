@@ -36,9 +36,9 @@ export const api = {
       request<{ token: string; user: any; permissions: string[] }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
     me: () => request<{ user: any; permissions: string[] }>('/auth/me'),
     listUsers: () => request<any[]>('/auth/users'),
-    createUser: (data: { username: string; password: string; display_name: string; role: string; driver_id?: number }) =>
+    createUser: (data: { username: string; password: string; display_name: string; role: string; driver_id?: number; location_id?: number }) =>
       request<any>('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
-    updateUser: (id: number, data: Partial<{ display_name: string; role: string; is_active: number; driver_id: number }>) =>
+    updateUser: (id: number, data: Partial<{ display_name: string; role: string; is_active: number; driver_id: number; location_id: number }>) =>
       request<any>(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     updatePermissions: (id: number, permissions: string[]) =>
       request<any>(`/auth/users/${id}/permissions`, { method: 'PUT', body: JSON.stringify({ permissions }) }),

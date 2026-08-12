@@ -6,8 +6,24 @@ import { useToastStore } from '../lib/store';
 import { formatINR } from '../lib/format';
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
+import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE, isValidMobileNumber, toE164 } from '../lib/phone';
 
 const emptyForm = { name: '', phone: '', address: '', type: 'dealer', opening_balance: '', opening_balance_type: 'dr' };
+
+function namesMatch(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function nextAvailableName(baseName: string, existing: any[]): string {
+  const trimmed = baseName.trim();
+  let n = 2;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const candidate = `${trimmed} (${n})`;
+    if (!existing.some((p) => namesMatch(p.name, candidate))) return candidate;
+    n += 1;
+  }
+}
 
 export default function Customers() {
   const navigate = useNavigate();
@@ -16,6 +32,9 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY_CODE);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [pendingDuplicateName, setPendingDuplicateName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -27,14 +46,39 @@ export default function Customers() {
 
   useEffect(() => { load(); }, [load]);
 
+  const closeForm = () => {
+    setOpen(false);
+    setForm(emptyForm);
+    setCountryCode(DEFAULT_COUNTRY_CODE);
+    setPhoneError(null);
+    setPendingDuplicateName(null);
+  };
+
   const save = async () => {
-    if (!form.name.trim()) return addToast('Name is required', 'error');
+    const trimmedName = form.name.trim();
+    if (!trimmedName) return addToast('Name is required', 'error');
+    if (form.phone && !isValidMobileNumber(countryCode, form.phone)) {
+      setPhoneError('Enter a valid mobile number');
+      return;
+    }
+    setPhoneError(null);
+
+    let finalName = trimmedName;
+    if (pendingDuplicateName) {
+      finalName = pendingDuplicateName;
+    } else {
+      const duplicate = rows.find((p) => namesMatch(p.name, trimmedName));
+      if (duplicate) {
+        setPendingDuplicateName(nextAvailableName(trimmedName, rows));
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      await api.parties.create(form);
+      await api.parties.create({ ...form, name: finalName, phone: form.phone ? toE164(countryCode, form.phone) : '' });
       addToast('Party added');
-      setOpen(false);
-      setForm(emptyForm);
+      closeForm();
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
     finally { setSaving(false); }
@@ -86,28 +130,41 @@ export default function Customers() {
         </div>
       )}
 
-      <Modal isOpen={open} onClose={() => setOpen(false)} title="Add Party">
+      <Modal isOpen={open} onClose={closeForm} title="Add Party">
         <div className="space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-heading/70">Name</label>
-            <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input
+              className="input-field"
+              value={form.name}
+              onChange={(e) => { setForm({ ...form, name: e.target.value }); setPendingDuplicateName(null); }}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Phone</label>
-              <input className="input-field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Type</label>
-              <select className="input-field" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                <option value="dealer">Dealer</option>
-                <option value="contractor">Contractor</option>
-                <option value="builder">Builder</option>
-                <option value="institution">Institution</option>
-                <option value="supplier">Supplier</option>
-                <option value="other">Other</option>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-heading/70">Phone</label>
+            <div className="flex gap-2">
+              <select className="input-field w-36" value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
+                {COUNTRY_CODES.map((c) => <option key={c.dialCode} value={c.dialCode}>{c.name} {c.dialCode}</option>)}
               </select>
+              <input
+                className="input-field w-full"
+                value={form.phone}
+                onChange={(e) => { setForm({ ...form, phone: e.target.value }); setPhoneError(null); }}
+                placeholder="Mobile number"
+              />
             </div>
+            {phoneError && <p className="mt-1 text-xs text-outstanding">{phoneError}</p>}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-heading/70">Type</label>
+            <select className="input-field" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="dealer">Dealer</option>
+              <option value="contractor">Contractor</option>
+              <option value="builder">Builder</option>
+              <option value="institution">Institution</option>
+              <option value="supplier">Supplier</option>
+              <option value="other">Other</option>
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-heading/70">Address</label>
@@ -126,7 +183,16 @@ export default function Customers() {
               </select>
             </div>
           </div>
-          <button className="btn-primary w-full justify-center" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          {pendingDuplicateName && (
+            <div className="rounded-lg bg-stock-warn/10 p-3">
+              <p className="text-xs font-medium text-stock-warn">
+                A party named "{form.name.trim()}" already exists. Saving will add this one as "{pendingDuplicateName}" instead.
+              </p>
+            </div>
+          )}
+          <button className="btn-primary w-full justify-center" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : pendingDuplicateName ? 'Save anyway' : 'Save'}
+          </button>
         </div>
       </Modal>
     </div>

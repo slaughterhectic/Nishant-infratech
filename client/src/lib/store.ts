@@ -8,6 +8,7 @@ interface User {
   role: Role;
   display_name: string;
   linked_driver_id?: number | null;
+  linked_location_id?: number | null;
 }
 
 interface AuthState {

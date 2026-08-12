@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { KPICard } from '../components/ui/KPICard';
 import { DataTable } from '../components/ui/DataTable';
+import { PartySelect } from '../components/PartySelect';
 
 const emptyForm = {
   date: formatDateInput(),
@@ -55,7 +56,6 @@ export default function Purchases() {
   const [rows, setRows] = useState<PurchaseRow[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -77,10 +77,9 @@ export default function Purchases() {
 
   const loadMeta = useCallback(async () => {
     try {
-      const [p, l, parties] = await Promise.all([api.products.list(), api.locations.list(), api.parties.list()]);
+      const [p, l] = await Promise.all([api.products.list(), api.locations.list()]);
       setProducts(p);
       setLocations(l);
-      setSuppliers(parties.filter((x: any) => x.type === 'supplier'));
     } catch (e: any) { addToast(e.message, 'error'); }
   }, [addToast]);
 
@@ -266,13 +265,12 @@ export default function Purchases() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-heading/70">Supplier (optional)</label>
-              <select className="input-field" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
-                <option value="">—</option>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
+            <PartySelect
+              label="Supplier (optional)"
+              partyType="supplier"
+              value={form.supplier_id ? Number(form.supplier_id) : undefined}
+              onChange={(supplier_id) => setForm({ ...form, supplier_id: String(supplier_id) })}
+            />
             <div>
               <label className="mb-1 block text-sm font-medium text-heading/70">Vehicle / Wagon No.</label>
               <input className="input-field" value={form.vehicle_number} onChange={(e) => setForm({ ...form, vehicle_number: e.target.value })} />
