@@ -38,7 +38,7 @@ interface NavItem {
 }
 
 const fullNav: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, ownerOnly: true },
   { to: '/purchases', label: 'Purchases', icon: Package, permission: 'purchases' },
   { to: '/orders', label: 'Orders', icon: ClipboardCheck, permission: 'orders' },
   { to: '/dispatch', label: 'Sales & Dispatch', icon: ShoppingCart, permission: 'dispatch' },

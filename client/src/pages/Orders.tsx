@@ -7,6 +7,7 @@ import { formatDate, formatDateInput, formatINR, formatNumber } from '../lib/for
 import { Skeleton } from '../components/ui/Skeleton';
 import { Modal } from '../components/ui/Modal';
 import { PartySelect } from '../components/PartySelect';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 const REQUEST_STATUS_STYLE: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -47,11 +48,11 @@ export default function Orders() {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try { setRows(await api.orderRequests.list(statusFilter || undefined)); }
-    catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast, statusFilter]);
 
   const loadMeta = useCallback(async () => {
@@ -65,6 +66,7 @@ export default function Orders() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadMeta(); }, [loadMeta]);
+  useAutoRefresh(() => load(true), 8000);
 
   const availabilityFor = useCallback((productId: number | string) => stockRows
     .filter((r) => String(r.product_id) === String(productId) && Number(r.quantity) > 0)

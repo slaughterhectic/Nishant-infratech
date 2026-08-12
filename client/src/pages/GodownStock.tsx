@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useToastStore } from '../lib/store';
 import { formatNumber } from '../lib/format';
 import { Skeleton } from '../components/ui/Skeleton';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 export default function GodownStock() {
   const addToast = useToastStore((s) => s.addToast);
@@ -12,17 +13,18 @@ export default function GodownStock() {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<'cement' | 'sariya'>('cement');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [s, st] = await Promise.all([api.stock.summary(), api.stock.list(true)]);
       setSummary(s);
       setStock(st);
-    } catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    } catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(() => load(true), 8000);
 
   if (loading) return <Skeleton.Card />;
 

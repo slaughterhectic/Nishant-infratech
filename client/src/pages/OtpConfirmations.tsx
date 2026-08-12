@@ -6,6 +6,7 @@ import { useToastStore, useAuthStore } from '../lib/store';
 import { formatNumber, formatRelativeTime } from '../lib/format';
 import { waLink, smsLink, dispatchOtpMessage } from '../lib/whatsapp';
 import { Skeleton } from '../components/ui/Skeleton';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 export default function OtpConfirmations() {
   const location = useLocation();
@@ -20,8 +21,8 @@ export default function OtpConfirmations() {
   const [justGenerated, setJustGenerated] = useState<any | null>((location.state as any)?.justGenerated || null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [dispatched, delivered] = await Promise.all([
         api.dispatches.list({ status: 'dispatched' }),
@@ -29,11 +30,12 @@ export default function OtpConfirmations() {
       ]);
       setPending(dispatched);
       setRecent(delivered.slice(0, 8));
-    } catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    } catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(() => load(true), 6000);
 
   const openVerify = (id: number) => {
     setActiveId(id);

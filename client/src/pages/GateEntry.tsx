@@ -6,6 +6,7 @@ import { useToastStore, useAuthStore } from '../lib/store';
 import { formatNumber } from '../lib/format';
 import { VehicleSelect } from '../components/VehicleSelect';
 import { DriverSelect } from '../components/DriverSelect';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 // Deliberately minimal — the client's team explained gate/godown staff aren't
 // comfortable with software, so this screen is just cards + a short form.
@@ -27,11 +28,11 @@ export default function GateEntry() {
   const [saving, setSaving] = useState(false);
   const [stockRows, setStockRows] = useState<any[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try { setAllPunched(await api.dispatches.list({ status: 'punched' })); }
-    catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast]);
 
   const loadMeta = useCallback(async () => {
@@ -60,6 +61,7 @@ export default function GateEntry() {
   }, [allPunched, linkedLocationId]);
 
   useEffect(() => { load(); loadMeta(); }, [load, loadMeta]);
+  useAutoRefresh(() => load(true), 6000); // gate/godown staff need near-live visibility on new punches
 
   const openFulfill = (d: any) => {
     setFulfillTarget(d);

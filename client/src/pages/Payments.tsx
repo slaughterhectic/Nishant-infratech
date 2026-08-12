@@ -6,6 +6,7 @@ import { formatDate, formatDateInput, formatINR } from '../lib/format';
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { PartySelect } from '../components/PartySelect';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 const emptyForm = { date: formatDateInput(), party_id: '', amount: '', mode: 'bank', direction: 'receive', bank_name: '', remarks: '' };
 
@@ -65,8 +66,8 @@ export default function Payments() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<'all' | TxnKind>('all');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [pm, pu, ds] = await Promise.all([
         api.payments.list(),
@@ -76,11 +77,12 @@ export default function Payments() {
       setPayments(pm);
       setPurchases(pu);
       setDispatches(ds);
-    } catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    } catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(() => load(true), 10000);
 
   const transactions = useMemo<Txn[]>(() => {
     const rows: Txn[] = [];

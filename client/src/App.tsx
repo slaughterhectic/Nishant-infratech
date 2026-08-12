@@ -22,6 +22,20 @@ import RailRack from './pages/RailRack';
 import MyLedger from './pages/MyLedger';
 import { useAuthStore } from './lib/store';
 
+// Dashboard is owner-only, so it can no longer be the universal fallback
+// every guard below redirects to (that would loop: guard denies -> /dashboard
+// -> OwnerOnly denies -> /dashboard -> ...). This picks a safe, role-
+// appropriate landing page instead — one each role is actually guaranteed
+// to have access to.
+function safeHomePath(user: { role?: string } | null | undefined): string {
+  if (!user) return '/login';
+  if (user.role === 'owner') return '/dashboard';
+  if (user.role === 'driver') return '/my-ledger';
+  if (user.role === 'gatekeeper' || user.role === 'godown_manager') return '/gate';
+  if (user.role === 'collection_staff') return '/payments';
+  return '/orders'; // accountant, and any future role defaulting through here
+}
+
 function Protected({ children }: { children: ReactNode }) {
   const ok = useAuthStore((s) => s.isAuthenticated);
   const refreshPermissions = useAuthStore((s) => s.refreshPermissions);
@@ -37,13 +51,15 @@ function Protected({ children }: { children: ReactNode }) {
 
 function PermissionGuard({ permission, children }: { permission: string; children: ReactNode }) {
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  if (!hasPermission(permission)) return <Navigate to="/dashboard" replace />;
+  const user = useAuthStore((s) => s.user);
+  if (!hasPermission(permission)) return <Navigate to={safeHomePath(user)} replace />;
   return <>{children}</>;
 }
 
 function OwnerOnly({ children }: { children: ReactNode }) {
   const isOwner = useAuthStore((s) => s.isOwner);
-  if (!isOwner()) return <Navigate to="/dashboard" replace />;
+  const user = useAuthStore((s) => s.user);
+  if (!isOwner()) return <Navigate to={safeHomePath(user)} replace />;
   return <>{children}</>;
 }
 
@@ -51,21 +67,13 @@ function OwnerOnly({ children }: { children: ReactNode }) {
 // matrix — any user with role='driver' automatically gets this, always.
 function DriverOnly({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
-  if (user?.role !== 'driver') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'driver') return <Navigate to={safeHomePath(user)} replace />;
   return <>{children}</>;
 }
 
 function HomeRedirect() {
   const user = useAuthStore((s) => s.user);
-  if (user?.role === 'driver') return <Navigate to="/my-ledger" replace />;
-  if (user?.role === 'gatekeeper' || user?.role === 'godown_manager') return <Navigate to="/gate" replace />;
-  return <Navigate to="/dashboard" replace />;
-}
-
-function DashboardRoute() {
-  const user = useAuthStore((s) => s.user);
-  if (user?.role === 'driver') return <Navigate to="/my-ledger" replace />;
-  return <Dashboard />;
+  return <Navigate to={safeHomePath(user)} replace />;
 }
 
 export default function App() {
@@ -81,7 +89,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<HomeRedirect />} />
-          <Route path="/dashboard" element={<DashboardRoute />} />
+          <Route path="/dashboard" element={<OwnerOnly><Dashboard /></OwnerOnly>} />
           <Route
             path="/purchases"
             element={<PermissionGuard permission="purchases"><Purchases /></PermissionGuard>}

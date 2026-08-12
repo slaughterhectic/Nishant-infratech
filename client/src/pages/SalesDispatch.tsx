@@ -7,6 +7,7 @@ import { formatDate, formatDateInput, formatINR, formatNumber } from '../lib/for
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { PartySelect } from '../components/PartySelect';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 const STATUS_STYLE: Record<string, string> = {
   punched: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -75,11 +76,11 @@ export default function SalesDispatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try { setRows(await api.dispatches.list(statusFilter ? { status: statusFilter } : undefined)); }
-    catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast, statusFilter]);
 
   const loadMeta = useCallback(async () => {
@@ -94,6 +95,7 @@ export default function SalesDispatch() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadMeta(); }, [loadMeta]);
+  useAutoRefresh(() => { load(true); loadMeta(); }, 8000); // loadMeta also refreshes live stock levels
 
   // Only offer products we actually have stock of — filtered further to the
   // chosen source location once one's picked. "Let godown decide" shows

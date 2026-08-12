@@ -9,6 +9,7 @@ import { useToastStore } from '../lib/store';
 import { formatDate, formatINR, formatNumber, formatRelativeTime } from '../lib/format';
 import { KPICard } from '../components/ui/KPICard';
 import { Skeleton } from '../components/ui/Skeleton';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 const PIE_COLORS = ['#F5691F', '#1E6FC0', '#2D7A1F', '#B8620A', '#8A3010', '#6B270F'];
 
@@ -30,8 +31,8 @@ export default function Dashboard() {
   const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [s, c, sum, act] = await Promise.all([
         api.dashboard.stats(), api.dashboard.charts(), api.stock.summary(), api.notifications.list(10),
@@ -40,11 +41,12 @@ export default function Dashboard() {
       setCharts(c);
       setSummary(sum);
       setActivity(act);
-    } catch (e: any) { addToast(e.message, 'error'); }
-    finally { setLoading(false); }
+    } catch (e: any) { if (!silent) addToast(e.message, 'error'); }
+    finally { if (!silent) setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(() => load(true), 10000);
 
   if (loading || !stats || !charts) {
     return (
