@@ -34,11 +34,16 @@ const allowedOrigins = (process.env.FRONTEND_URL ?? '')
   .map((s) => s.trim())
   .filter(Boolean)
   .concat('http://localhost:5175');
-const vercelPreviewPattern = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+// Vercel preview deploys and Expo's own web-preview tunnels each get a fresh
+// subdomain per session, so those are matched by pattern rather than listed.
+const previewOriginPatterns = [
+  /^https:\/\/[a-z0-9-]+\.vercel\.app$/,
+  /^https:\/\/[a-z0-9-]+\.exp\.direct$/,
+];
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || vercelPreviewPattern.test(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || previewOriginPatterns.some((p) => p.test(origin))) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
