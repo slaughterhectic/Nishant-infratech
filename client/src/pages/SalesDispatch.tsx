@@ -44,6 +44,7 @@ const emptyForm = {
 export default function SalesDispatch() {
   const addToast = useToastStore((s) => s.addToast);
   const canRemove = useAuthStore((s) => s.user?.role !== 'gatekeeper');
+  const linkedLocationId = useAuthStore((s) => s.user?.linked_location_id);
   const location = useLocation();
   const navigate = useNavigate();
   const [rows, setRows] = useState<any[]>([]);
@@ -54,7 +55,9 @@ export default function SalesDispatch() {
   const [statusFilter, setStatusFilter] = useState('');
 
   const [punchOpen, setPunchOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  // Godown-scoped staff punch from their own godown in practice — pre-select
+  // it so the order lands in their own Gate Entry list, not another godown's.
+  const [form, setForm] = useState({ ...emptyForm, source_location_id: linkedLocationId ? String(linkedLocationId) : '' });
   const [saving, setSaving] = useState(false);
   const [stockRows, setStockRows] = useState<any[]>([]);
   const [lots, setLots] = useState<any[]>([]);
@@ -153,7 +156,7 @@ export default function SalesDispatch() {
       }
       addToast('Order punched — godown has been notified');
       setPunchOpen(false);
-      setForm(emptyForm);
+      setForm({ ...emptyForm, source_location_id: linkedLocationId ? String(linkedLocationId) : '' });
       load();
     } catch (e: any) { addToast(e.message, 'error'); }
     finally { setSaving(false); }

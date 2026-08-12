@@ -59,6 +59,9 @@ export default function GateEntry() {
     if (!linkedLocationId) return allPunched;
     return allPunched.filter((d) => Number(d.source_location_id) === linkedLocationId);
   }, [allPunched, linkedLocationId]);
+  const linkedLocationName = linkedLocationId
+    ? locations.find((l) => l.id === linkedLocationId)?.name
+    : undefined;
 
   useEffect(() => { load(); loadMeta(); }, [load, loadMeta]);
   useAutoRefresh(() => load(true), 6000); // gate/godown staff need near-live visibility on new punches
@@ -128,7 +131,10 @@ export default function GateEntry() {
       <h1 className="text-2xl font-bold text-heading">Gate Entry</h1>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-heading">New Orders ({punched.length})</h2>
+        <h2 className="mb-1 text-lg font-semibold text-heading">New Orders ({punched.length})</h2>
+        {linkedLocationName && (
+          <p className="mb-3 text-sm text-heading/50">Showing orders for {linkedLocationName} only</p>
+        )}
         <div className="space-y-3">
           {punched.map((d) => (
             <button
@@ -142,9 +148,10 @@ export default function GateEntry() {
             </button>
           ))}
           {punched.length === 0 && (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-card-border py-10 text-heading/40">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-card-border px-6 py-10 text-heading/40">
               <PackageOpen className="h-8 w-8" />
-              <p>No new orders</p>
+              <p className="font-medium">{linkedLocationName ? `No new orders for ${linkedLocationName}` : 'No new orders'}</p>
+              {linkedLocationName && <p className="text-sm">Orders punched from other godowns won't appear here.</p>}
             </div>
           )}
         </div>
